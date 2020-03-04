@@ -20,7 +20,9 @@ class RecordGenerator():
                  sigmas=(0.1, 25.0),
                  inner_mode_dist_tol=0.25,
                  signal_dispersion=(0.00001, 0.4),
-                 trim_corners=False):
+                 trim_corners=False,
+                 max_attempts=100):
+        self.max_attempts = max_attempts
         self.rng = np.random.RandomState(seed)
         self.n_bins = n_bins
         self.n_obs = n_obs
@@ -83,6 +85,7 @@ class RecordGenerator():
         meaning_n_obs = []
         meaning_rounding = []
         meaning_means = []
+        meaning_centroids = []
         meaning_sigmas = []
         offset = self.rng.uniform(1, 2 * n_bins / (n_meanings + 1) - 1)
         for i, mw in enumerate(wts_meanings):
@@ -124,7 +127,7 @@ class RecordGenerator():
                     # any subcomponent must be max one std of distance
                     attempts = 0
                     inner_mean_dist = 0.5 * delta
-                    while attempts < 50:
+                    while attempts < self.max_attempts:
                         m = self.rng.normal(mean0, inner_mean_dist)
                         isr = self.inner_sigma_ratio
                         L = max(
@@ -149,9 +152,10 @@ class RecordGenerator():
                             inner_mean_dist *= 0.8
                         attempts += 1
                     if attempts == 25:
-                        print("Warning: max attempts for mean, sigma (in)")
+                        raise RuntimeError("Warning: max attempts for mean, sigma (in)")
                 means = np.array([mean0] + means1)
                 sigmas = np.array([sigma0] + sigmas1)
+            centroid = np.dot(wts, means)
             #
             meaning_means.append(means)
             meaning_sigmas.append(sigmas)
@@ -184,11 +188,11 @@ class RecordGenerator():
                 if self.trim_corners:
                     j = 0
                     while j < n_bins and counts[j] == 0:
-                        dens[j] = 1e-9
+                        dens[j] = 1e-8
                         j += 1
                     j = n_bins - 1
                     while j >= 0 and counts[j] == 0:
-                        dens[j] = 1e-9
+                        dens[j] = 1e-8
                         j -= 1
                     # normalize density as probability
                     if dens.sum() < 1e-6:   # std too small!
@@ -201,7 +205,7 @@ class RecordGenerator():
             # totals
             comp_counts = np.array(comp_counts, dtype=int)
             wts_ = np.array(comp_counts, dtype=float) / sum(comp_counts)
-            pdf = sum(w * s for w, s in zip(pdfs, wts_))
+            pdf = sum(w * s for w, s in zip(wts_, pdfs))
             if pdf.sum() == 0:
                 print("Warning: pdf sum is zero???")
             pdf /= pdf.sum()
@@ -210,6 +214,7 @@ class RecordGenerator():
 
             # add two meaning data
             meaning_signals.append(signal)
+            meaning_centroids.append(centroid)
             meaning_pdfs.append(pdf)
             meaning_n_comps.append(n_comps)
             meaning_comp_counts.append(comp_counts)
@@ -226,15 +231,17 @@ class RecordGenerator():
 
         # modes and post-trimming weights
         modes_onehot = np.zeros(n_bins, dtype=int)
+        centroids_onehot = np.zeros(n_bins, dtype=int)
         # meaning_wts = meaning_n_obs / meaning_n_obs.sum()
         meaning_wts = wts_meanings
         meaning_wts_onehot = np.zeros(n_bins)
         meaning_modes = []
-        for w, d in zip(meaning_wts, meaning_pdfs):
+        for w, d, c in zip(meaning_wts, meaning_pdfs, meaning_centroids):
             mode = np.argmax(d)
             meaning_modes.append(mode)
             modes_onehot[mode] = 1
             meaning_wts_onehot[mode] = w
+            centroids_onehot[int(np.clip(np.round(c), 0, n_bins - 1))] = 1
         meaning_modes = np.array(meaning_modes)
 
         # total signal density
@@ -252,12 +259,15 @@ class RecordGenerator():
             'signal_noisy': signal_noisy,
             'obs': obs,
             'meaning_modes': meaning_modes,
+            'meaning_centroids': meaning_centroids,
             'meaning_n_obs': meaning_n_obs,
             'meaning_n_comps': meaning_n_comps,
             'modes_onehot': modes_onehot,
             'meaning_wts': meaning_wts,
             'meaning_wts_onehot': meaning_wts_onehot,
             'meaning_means': meaning_means,
+            'centroids': meaning_centroids,
+            'centroids_onehot': centroids_onehot,
             'meaning_sigmas': meaning_sigmas,
             'n_obs': total_obs,
             'n_meanings': n_meanings,

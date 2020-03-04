@@ -132,9 +132,9 @@ class Generator(tf.keras.Model):
             ksize, filters, pooling=False, noisy=True)
         self.gate_head = tf.keras.layers.Conv1D(
             1, 1, activation='linear', padding='same',
-            kernel_regularizer=tf.keras.regularizers.l2(0.001),
+            kernel_regularizer=tf.keras.regularizers.l2(0.0001),
             activity_regularizer=tf.keras.regularizers.l2(0.1),
-            bias_regularizer=tf.keras.regularizers.l2(0.0001),
+            bias_regularizer=tf.keras.regularizers.l2(0.00001),
             kernel_initializer=TruncatedNormal(stddev=0.02),
             bias_initializer='zeros')
         self.noise_block = ResBlock(
